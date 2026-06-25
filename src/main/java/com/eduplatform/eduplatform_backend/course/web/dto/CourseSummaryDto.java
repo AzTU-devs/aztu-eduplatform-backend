@@ -26,5 +26,7 @@ public record CourseSummaryDto(
         int enrolledCount,
         UUID tutorId,
         String tutorDisplayName,
-        Instant publishedAt
+        Instant publishedAt,
+        Integer totalDurationSec,
+        UUID thumbnailMediaId
 ) {}

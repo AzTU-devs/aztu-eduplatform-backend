@@ -1,5 +1,6 @@
 package com.eduplatform.eduplatform_backend.course.web;
 
+import com.eduplatform.eduplatform_backend.common.enums.CourseLevel;
 import com.eduplatform.eduplatform_backend.common.enums.CourseType;
 import com.eduplatform.eduplatform_backend.common.web.ApiResponse;
 import com.eduplatform.eduplatform_backend.common.web.PageResponse;
@@ -11,6 +12,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/public/courses")
@@ -26,11 +30,20 @@ public class CoursePublicController {
     }
 
     @GetMapping
-    @Operation(summary = "Browse published courses, optionally filtered by type", security = {})
+    @Operation(summary = "Browse published courses with optional catalog filters", security = {})
     public ApiResponse<PageResponse<CourseSummaryDto>> browse(
             @RequestParam(required = false) CourseType type,
+            @RequestParam(required = false) UUID category,
+            @RequestParam(required = false) BigDecimal priceMin,
+            @RequestParam(required = false) BigDecimal priceMax,
+            @RequestParam(required = false) BigDecimal ratingMin,
+            @RequestParam(required = false) CourseLevel level,
+            @RequestParam(required = false) String language,
+            @RequestParam(required = false) Boolean free,
             Pageable pageable) {
-        return ApiResponse.ok(PageResponse.of(service.browsePublished(type, pageable), mapper::toSummaryDto));
+        return ApiResponse.ok(PageResponse.of(
+                service.browsePublished(type, category, priceMin, priceMax, ratingMin, level, language, free, pageable),
+                mapper::toSummaryDto));
     }
 
     @GetMapping("/search")

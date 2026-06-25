@@ -2,6 +2,7 @@ package com.eduplatform.eduplatform_backend.course.web.mapper;
 
 import com.eduplatform.eduplatform_backend.catalog.domain.Category;
 import com.eduplatform.eduplatform_backend.catalog.domain.Tag;
+import com.eduplatform.eduplatform_backend.common.enums.CourseType;
 import com.eduplatform.eduplatform_backend.course.domain.Course;
 import com.eduplatform.eduplatform_backend.course.domain.CourseModule;
 import com.eduplatform.eduplatform_backend.course.domain.Lesson;
@@ -23,7 +24,25 @@ public interface CourseMapper {
 
     @Mapping(target = "tutorId", source = "tutor.id")
     @Mapping(target = "tutorDisplayName", expression = "java(course.getTutor() == null ? null : course.getTutor().getUser().getFirstName() + \" \" + course.getTutor().getUser().getLastName())")
+    @Mapping(target = "thumbnailMediaId", source = "thumbnail.id")
+    @Mapping(target = "totalDurationSec", expression = "java(totalDurationSec(course))")
     CourseSummaryDto toSummaryDto(Course course);
+
+    /**
+     * Total course duration in seconds: for ONLINE courses the online details' total video seconds;
+     * for OFFLINE courses the total contact hours converted to seconds (× 3600).
+     */
+    default Integer totalDurationSec(Course course) {
+        if (course.getCourseType() == CourseType.ONLINE) {
+            OnlineCourseDetails od = course.getOnlineDetails();
+            return od == null ? null : od.getTotalVideoSeconds();
+        }
+        OfflineCourseDetails od = course.getOfflineDetails();
+        if (od == null || od.getTotalHours() == null) {
+            return null;
+        }
+        return od.getTotalHours().multiply(java.math.BigDecimal.valueOf(3600)).intValue();
+    }
 
     @Mapping(target = "tutorId", source = "tutor.id")
     @Mapping(target = "tutorDisplayName", expression = "java(course.getTutor() == null ? null : course.getTutor().getUser().getFirstName() + \" \" + course.getTutor().getUser().getLastName())")

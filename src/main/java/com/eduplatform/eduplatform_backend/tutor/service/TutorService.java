@@ -94,6 +94,16 @@ public class TutorService {
         return p;
     }
 
+    /** Public tutor profile: visible only when the profile exists and is APPROVED. */
+    @Transactional(readOnly = true)
+    public TutorProfile publicProfile(UUID tutorId) {
+        TutorProfile p = profiles.findById(tutorId)
+                .filter(t -> t.getApprovalStatus() == TutorApprovalStatus.APPROVED)
+                .orElseThrow(() -> Errors.notFound("TUTOR_PROFILE_NOT_FOUND", "Tutor does not exist"));
+        initForMapping(p);
+        return p;
+    }
+
     @Transactional(readOnly = true)
     public Page<TutorProfile> listByStatus(TutorApprovalStatus status, Pageable pageable) {
         Page<TutorProfile> page = profiles.findAllByApprovalStatus(status, pageable);

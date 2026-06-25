@@ -20,6 +20,8 @@ public interface RoomBookingRepository extends JpaRepository<RoomBooking, UUID> 
 
     Page<RoomBooking> findAllByTutorId(UUID tutorId, Pageable pageable);
 
+    Page<RoomBooking> findAllByTutorIdAndStatus(UUID tutorId, BookingStatus status, Pageable pageable);
+
     Page<RoomBooking> findAllByRoomId(UUID roomId, Pageable pageable);
 
     /**

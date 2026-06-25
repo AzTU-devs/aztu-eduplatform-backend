@@ -56,7 +56,10 @@ public class SecurityConfig {
                             "/api/auth/login",
                             "/api/auth/refresh",
                             "/api/auth/admin/register/start",
-                            "/api/auth/admin/register/verify").permitAll()
+                            "/api/auth/admin/register/verify",
+                            "/api/auth/password/forgot",
+                            "/api/auth/password/reset",
+                            "/api/auth/email/verify").permitAll()
                     .requestMatchers("/api/auth/oauth/**").permitAll()
                     // WebSocket handshake — STOMP CONNECT enforces JWT at the message layer
                     .requestMatchers("/ws", "/ws/**").permitAll()

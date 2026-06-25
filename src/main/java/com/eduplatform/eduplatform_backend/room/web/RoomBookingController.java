@@ -43,6 +43,25 @@ public class RoomBookingController {
                 .body(ApiResponse.ok(mapper.toBookingDto(service.requestBooking(me.userId(), req))));
     }
 
+    @GetMapping("/mine")
+    @PreAuthorize("hasAuthority('room:book')")
+    @Operation(summary = "Tutor: list my room bookings")
+    public ApiResponse<PageResponse<RoomBookingDto>> mine(
+            @RequestParam(required = false) BookingStatus status,
+            @CurrentUser AuthenticatedPrincipal me,
+            Pageable pageable) {
+        return ApiResponse.ok(PageResponse.of(
+                service.listMine(me.userId(), status, pageable), mapper::toBookingDto));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('room:book')")
+    @Operation(summary = "Tutor: cancel my room booking")
+    public ApiResponse<RoomBookingDto> cancel(@PathVariable UUID id,
+                                              @CurrentUser AuthenticatedPrincipal me) {
+        return ApiResponse.ok(mapper.toBookingDto(service.cancelOwn(id, me.userId())));
+    }
+
     @GetMapping("/admin")
     @PreAuthorize("hasAuthority('room:approve')")
     @Operation(summary = "Admin: list bookings by status")

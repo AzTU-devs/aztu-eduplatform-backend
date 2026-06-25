@@ -1,5 +1,6 @@
 package com.eduplatform.eduplatform_backend.identity.service;
 
+import com.eduplatform.eduplatform_backend.audit.service.AuditService;
 import com.eduplatform.eduplatform_backend.common.enums.RoleCode;
 import com.eduplatform.eduplatform_backend.common.enums.TokenRevokeReason;
 import com.eduplatform.eduplatform_backend.common.enums.UserStatus;
@@ -24,10 +25,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 public class AuthService {
+
+    /** Failed-login attempts before an account is locked. */
+    private static final int LOCKOUT_THRESHOLD = 10;
 
     private final UserRepository users;
     private final RoleRepository roles;
@@ -35,15 +40,20 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final RefreshTokenService refreshService;
+    private final AuditService audit;
+    private final LoginAttemptService loginAttempts;
 
     public AuthService(UserRepository users, RoleRepository roles, PermissionRepository perms,
-                       PasswordEncoder encoder, JwtService jwt, RefreshTokenService refreshService) {
+                       PasswordEncoder encoder, JwtService jwt, RefreshTokenService refreshService,
+                       AuditService audit, LoginAttemptService loginAttempts) {
         this.users = users;
         this.roles = roles;
         this.perms = perms;
         this.encoder = encoder;
         this.jwt = jwt;
         this.refreshService = refreshService;
+        this.audit = audit;
+        this.loginAttempts = loginAttempts;
     }
 
     @Transactional
@@ -103,15 +113,48 @@ public class AuthService {
             throw Errors.unauthorized("PASSWORD_LOGIN_DISABLED",
                     "This account uses social login; please sign in with the matching provider");
         }
+        if (user.getStatus() == UserStatus.LOCKED) {
+            throw Errors.forbidden("ACCOUNT_LOCKED",
+                    "Account is locked due to too many failed login attempts; contact an administrator");
+        }
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw Errors.forbidden("ACCOUNT_NOT_ACTIVE", "Account is " + user.getStatus());
         }
         if (!encoder.matches(req.password(), user.getPasswordHash())) {
-            users.incrementFailedLogins(user.getId());
+            // Persist counter + lockout in a separate transaction so it survives the
+            // rollback triggered by the INVALID_CREDENTIALS exception thrown below.
+            int attempts = safeRecordFailure(user.getId());
+            safeRecordSecurityEvent(user.getId(), "LOGIN_FAILURE",
+                    Map.<String, Object>of("email", req.email()), http);
+            if (attempts >= LOCKOUT_THRESHOLD) {
+                safeRecordSecurityEvent(user.getId(), "ACCOUNT_LOCKED",
+                        Map.<String, Object>of("email", req.email(), "failedLogins", attempts), http);
+            }
             throw Errors.unauthorized("INVALID_CREDENTIALS", "Invalid email or password");
         }
         users.markLoginSuccess(user.getId(), Instant.now());
+        safeRecordSecurityEvent(user.getId(), "LOGIN_SUCCESS",
+                Map.<String, Object>of("email", req.email()), http);
         return issueTokens(user, http);
+    }
+
+    /** Best-effort failed-login bookkeeping; never lets an audit/DB error break login. */
+    private int safeRecordFailure(UUID userId) {
+        try {
+            return loginAttempts.recordFailure(userId, LOCKOUT_THRESHOLD);
+        } catch (RuntimeException ex) {
+            return 0;
+        }
+    }
+
+    /** Best-effort security-event recording; never lets an audit/DB error break login. */
+    private void safeRecordSecurityEvent(UUID userId, String eventType,
+                                         Map<String, Object> detail, HttpServletRequest http) {
+        try {
+            audit.recordSecurityEvent(userId, eventType, detail, http);
+        } catch (RuntimeException ex) {
+            // already logged inside AuditService; swallow transaction-boundary failures too
+        }
     }
 
     @Transactional

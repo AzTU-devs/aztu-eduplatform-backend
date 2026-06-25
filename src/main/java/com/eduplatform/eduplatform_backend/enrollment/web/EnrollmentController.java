@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -48,6 +49,16 @@ public class EnrollmentController {
     @Operation(summary = "List my enrollments")
     public ApiResponse<PageResponse<EnrollmentDto>> mine(@CurrentUser AuthenticatedPrincipal me, Pageable pageable) {
         return ApiResponse.ok(PageResponse.of(service.mine(me.userId(), pageable), mapper::toDto));
+    }
+
+    @GetMapping("/courses/{courseId}/progress")
+    @PreAuthorize("hasAuthority('enrollment:read_own')")
+    @Operation(summary = "Load my saved lesson progress for a course")
+    public ApiResponse<List<LessonProgressDto>> courseProgress(@PathVariable UUID courseId,
+                                                               @CurrentUser AuthenticatedPrincipal me) {
+        return ApiResponse.ok(service.courseProgress(me.userId(), courseId).stream()
+                .map(mapper::toLessonProgressDto)
+                .toList());
     }
 
     @PutMapping("/courses/{courseId}/lessons/{lessonId}/progress")

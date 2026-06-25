@@ -5,10 +5,12 @@ import com.eduplatform.eduplatform_backend.common.security.AuthenticatedPrincipa
 import com.eduplatform.eduplatform_backend.common.security.CurrentUser;
 import com.eduplatform.eduplatform_backend.common.web.ApiResponse;
 import com.eduplatform.eduplatform_backend.common.web.PageResponse;
+import com.eduplatform.eduplatform_backend.enrollment.service.EnrollmentService;
 import com.eduplatform.eduplatform_backend.tutor.service.TutorService;
 import com.eduplatform.eduplatform_backend.tutor.web.dto.ApprovalDecisionRequest;
 import com.eduplatform.eduplatform_backend.tutor.web.dto.TutorApplyRequest;
 import com.eduplatform.eduplatform_backend.tutor.web.dto.TutorProfileDto;
+import com.eduplatform.eduplatform_backend.tutor.web.dto.TutorStudentDto;
 import com.eduplatform.eduplatform_backend.tutor.web.mapper.TutorMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,10 +30,12 @@ public class TutorController {
 
     private final TutorService service;
     private final TutorMapper mapper;
+    private final EnrollmentService enrollments;
 
-    public TutorController(TutorService service, TutorMapper mapper) {
+    public TutorController(TutorService service, TutorMapper mapper, EnrollmentService enrollments) {
         this.service = service;
         this.mapper = mapper;
+        this.enrollments = enrollments;
     }
 
     @PostMapping("/apply")
@@ -48,6 +52,14 @@ public class TutorController {
     @Operation(summary = "Get my tutor profile")
     public ApiResponse<TutorProfileDto> me(@CurrentUser AuthenticatedPrincipal me) {
         return ApiResponse.ok(mapper.toDto(service.myProfile(me.userId())));
+    }
+
+    @GetMapping("/students")
+    @PreAuthorize("hasRole('TUTOR')")
+    @Operation(summary = "List students enrolled in my courses")
+    public ApiResponse<PageResponse<TutorStudentDto>> students(@CurrentUser AuthenticatedPrincipal me,
+                                                               Pageable pageable) {
+        return ApiResponse.ok(PageResponse.of(enrollments.studentsOfTutor(me.userId(), pageable)));
     }
 
     // --- admin ---

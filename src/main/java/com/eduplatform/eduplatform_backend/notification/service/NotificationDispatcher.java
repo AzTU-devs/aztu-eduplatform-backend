@@ -2,6 +2,7 @@ package com.eduplatform.eduplatform_backend.notification.service;
 
 import com.eduplatform.eduplatform_backend.common.enums.NotificationChannel;
 import com.eduplatform.eduplatform_backend.common.enums.NotificationStatus;
+import com.eduplatform.eduplatform_backend.common.mail.MailService;
 import com.eduplatform.eduplatform_backend.identity.domain.User;
 import com.eduplatform.eduplatform_backend.notification.domain.Notification;
 import com.eduplatform.eduplatform_backend.notification.repo.NotificationRepository;
@@ -38,13 +39,16 @@ public class NotificationDispatcher {
     private final NotificationMapper mapper;
     private final SimpMessagingTemplate ws;
     private final ApplicationEventPublisher events;
+    private final MailService mail;
 
     public NotificationDispatcher(NotificationRepository repo, NotificationMapper mapper,
-                                  SimpMessagingTemplate ws, ApplicationEventPublisher events) {
+                                  SimpMessagingTemplate ws, ApplicationEventPublisher events,
+                                  MailService mail) {
         this.repo = repo;
         this.mapper = mapper;
         this.ws = ws;
         this.events = events;
+        this.mail = mail;
     }
 
     @Transactional
@@ -85,8 +89,24 @@ public class NotificationDispatcher {
                 n.setStatus(NotificationStatus.FAILED);
                 repo.save(n);
             }
+        } else if (n.getChannel() == NotificationChannel.EMAIL) {
+            // MailService is best-effort (logs in dev when SMTP isn't configured).
+            try {
+                String to = n.getUser() != null ? n.getUser().getEmail() : null;
+                if (to != null) {
+                    mail.send(to, n.getTitle() != null ? n.getTitle() : "AzTU EduPlatform",
+                            n.getBody() != null ? n.getBody() : "");
+                }
+                n.setStatus(NotificationStatus.SENT);
+                n.setSentAt(Instant.now());
+                repo.save(n);
+            } catch (Exception ex) {
+                log.warn("Email dispatch failed for notification {} → user {}", n.getId(), ev.userId(), ex);
+                n.setStatus(NotificationStatus.FAILED);
+                repo.save(n);
+            }
         }
-        // EMAIL / SMS channels would dispatch through their own adapters here.
+        // SMS channel would dispatch through its own adapter here.
     }
 
     public record NotificationCommittedEvent(UUID notificationId, UUID userId) {}

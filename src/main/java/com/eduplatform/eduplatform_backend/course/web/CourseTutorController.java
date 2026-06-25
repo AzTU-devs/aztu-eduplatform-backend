@@ -1,16 +1,20 @@
 package com.eduplatform.eduplatform_backend.course.web;
 
+import com.eduplatform.eduplatform_backend.common.enums.CourseStatus;
 import com.eduplatform.eduplatform_backend.common.security.AuthenticatedPrincipal;
 import com.eduplatform.eduplatform_backend.common.security.CurrentUser;
 import com.eduplatform.eduplatform_backend.common.web.ApiResponse;
+import com.eduplatform.eduplatform_backend.common.web.PageResponse;
 import com.eduplatform.eduplatform_backend.course.service.CourseService;
 import com.eduplatform.eduplatform_backend.course.web.dto.CourseDto;
+import com.eduplatform.eduplatform_backend.course.web.dto.CourseSummaryDto;
 import com.eduplatform.eduplatform_backend.course.web.dto.CreateCourseRequest;
 import com.eduplatform.eduplatform_backend.course.web.dto.UpdateCourseRequest;
 import com.eduplatform.eduplatform_backend.course.web.mapper.CourseMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,6 +33,17 @@ public class CourseTutorController {
     public CourseTutorController(CourseService service, CourseMapper mapper) {
         this.service = service;
         this.mapper = mapper;
+    }
+
+    @GetMapping("/mine")
+    @PreAuthorize("hasAuthority('course:update_own')")
+    @Operation(summary = "List my courses (incl. drafts); pass status to drive the approval board")
+    public ApiResponse<PageResponse<CourseSummaryDto>> mine(
+            @RequestParam(required = false) CourseStatus status,
+            @CurrentUser AuthenticatedPrincipal me,
+            Pageable pageable) {
+        return ApiResponse.ok(PageResponse.of(
+                service.listMine(me.userId(), status, pageable), mapper::toSummaryDto));
     }
 
     @PostMapping

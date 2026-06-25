@@ -3,6 +3,7 @@ package com.eduplatform.eduplatform_backend.identity.service;
 import com.eduplatform.eduplatform_backend.catalog.repo.CategoryRepository;
 import com.eduplatform.eduplatform_backend.common.enums.TutorApprovalStatus;
 import com.eduplatform.eduplatform_backend.common.error.Errors;
+import com.eduplatform.eduplatform_backend.common.mail.MailService;
 import com.eduplatform.eduplatform_backend.common.security.TokenHasher;
 import com.eduplatform.eduplatform_backend.identity.domain.TutorRegistrationOtp;
 import com.eduplatform.eduplatform_backend.identity.domain.User;
@@ -50,16 +51,18 @@ public class TutorSignupService {
     private final PasswordEncoder encoder;
     private final AuthService authService;
     private final TutorService tutorService;
+    private final MailService mail;
 
     public TutorSignupService(TutorRegistrationOtpRepository otps, UserRepository users,
                               CategoryRepository categories, PasswordEncoder encoder,
-                              AuthService authService, TutorService tutorService) {
+                              AuthService authService, TutorService tutorService, MailService mail) {
         this.otps = otps;
         this.users = users;
         this.categories = categories;
         this.encoder = encoder;
         this.authService = authService;
         this.tutorService = tutorService;
+        this.mail = mail;
     }
 
     @Transactional
@@ -157,8 +160,8 @@ public class TutorSignupService {
     }
 
     private void sendOtp(String email, String otp) {
-        // Real SMTP integration lives behind spring-boot-starter-mail and isn't wired here.
-        log.info("[tutor-signup] OTP for {} = {} (valid {} min)", email, otp, OTP_TTL.toMinutes());
+        // Delivers via SMTP when configured; falls back to logging the OTP in dev.
+        mail.sendOtp(email, otp, "tutor registration", OTP_TTL.toMinutes());
     }
 
     private static String generateNumericOtp() {

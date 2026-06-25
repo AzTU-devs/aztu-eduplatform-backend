@@ -17,12 +17,14 @@ import com.eduplatform.eduplatform_backend.enrollment.repo.LessonProgressReposit
 import com.eduplatform.eduplatform_backend.enrollment.web.dto.LessonProgressUpdateRequest;
 import com.eduplatform.eduplatform_backend.identity.domain.User;
 import com.eduplatform.eduplatform_backend.identity.repo.UserRepository;
+import com.eduplatform.eduplatform_backend.tutor.web.dto.TutorStudentDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -78,6 +80,20 @@ public class EnrollmentService {
     @Transactional(readOnly = true)
     public Page<Enrollment> mine(UUID userId, Pageable pageable) {
         return enrollments.findAllByUserId(userId, pageable);
+    }
+
+    /** Students enrolled in courses owned by the calling tutor (resolved by the tutor's owning user id). */
+    @Transactional(readOnly = true)
+    public Page<TutorStudentDto> studentsOfTutor(UUID tutorUserId, Pageable pageable) {
+        return enrollments.findStudentsOfTutor(tutorUserId, pageable);
+    }
+
+    /** Saved lesson progress for the user's enrolment in a course; empty if not enrolled or no progress. */
+    @Transactional(readOnly = true)
+    public List<LessonProgress> courseProgress(UUID userId, UUID courseId) {
+        return enrollments.findByUserIdAndCourseId(userId, courseId)
+                .map(e -> progress.findAllByEnrollmentId(e.getId()))
+                .orElseGet(List::of);
     }
 
     @Transactional

@@ -6,6 +6,7 @@ import com.eduplatform.eduplatform_backend.course.domain.Course;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,7 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface CourseRepository extends JpaRepository<Course, UUID> {
+public interface CourseRepository extends JpaRepository<Course, UUID>, JpaSpecificationExecutor<Course> {
 
     Optional<Course> findBySlug(String slug);
 
@@ -26,6 +27,9 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
     Page<Course> findAllByCourseTypeAndStatus(CourseType courseType, CourseStatus status, Pageable pageable);
 
     Page<Course> findAllByTutorId(UUID tutorId, Pageable pageable);
+
+    /** Courses owned by a tutor, filtered to a single status (tutor "my courses" / approval board / public profile). */
+    Page<Course> findAllByTutorIdAndStatus(UUID tutorId, CourseStatus status, Pageable pageable);
 
     /** Full-text search over published courses; falls back to ILIKE when GIN cannot match. */
     @Query(value = """

@@ -45,6 +45,50 @@ public class RoomBookingService {
         return bookings.findAllByStatus(status, pageable);
     }
 
+    /** Bookings owned by the calling tutor, optionally filtered by status. */
+    @Transactional(readOnly = true)
+    public Page<RoomBooking> listMine(UUID userId, BookingStatus status, Pageable pageable) {
+        TutorProfile tutor = tutors.findByUserId(userId)
+                .orElseThrow(() -> Errors.forbidden("NOT_A_TUTOR", "Only tutors have room bookings"));
+        Page<RoomBooking> page = (status == null)
+                ? bookings.findAllByTutorId(tutor.getId(), pageable)
+                : bookings.findAllByTutorIdAndStatus(tutor.getId(), status, pageable);
+        // Initialise lazy associations the web mapper reads, before the session closes
+        // (open-in-view=false).
+        page.forEach(this::touchMappedAssociations);
+        return page;
+    }
+
+    /** Tutor cancels one of their own bookings. */
+    @Transactional
+    public RoomBooking cancelOwn(UUID bookingId, UUID userId) {
+        TutorProfile tutor = tutors.findByUserId(userId)
+                .orElseThrow(() -> Errors.forbidden("NOT_A_TUTOR", "Only tutors can cancel room bookings"));
+        RoomBooking booking = bookings.findById(bookingId)
+                .orElseThrow(() -> Errors.notFound("BOOKING_NOT_FOUND", "Booking does not exist"));
+        if (!booking.getTutor().getId().equals(tutor.getId())) {
+            throw Errors.forbidden("NOT_BOOKING_OWNER", "Booking belongs to another tutor");
+        }
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.APPROVED) {
+            throw Errors.unprocessable("BOOKING_NOT_CANCELLABLE",
+                    "Only pending or approved bookings can be cancelled");
+        }
+        // Moving to CANCELLED is safe against the APPROVED-overlap exclusion constraint.
+        booking.setStatus(BookingStatus.CANCELLED);
+        bookings.save(booking);
+        touchMappedAssociations(booking);
+        return booking;
+    }
+
+    /** Force-initialise the lazy associations the {@code RoomMapper} dereferences. */
+    private void touchMappedAssociations(RoomBooking booking) {
+        booking.getRoom().getName();
+        if (booking.getOfflineCourse() != null) {
+            booking.getOfflineCourse().getCourseId();
+        }
+        booking.getTutor().getId();
+    }
+
     @Transactional
     public RoomBooking requestBooking(UUID userId, BookingCreateRequest req) {
         TutorProfile tutor = tutors.findByUserId(userId)

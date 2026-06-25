@@ -4,6 +4,7 @@ import com.eduplatform.eduplatform_backend.common.enums.NotificationChannel;
 import com.eduplatform.eduplatform_backend.common.enums.RoleCode;
 import com.eduplatform.eduplatform_backend.common.enums.UserStatus;
 import com.eduplatform.eduplatform_backend.common.error.Errors;
+import com.eduplatform.eduplatform_backend.common.mail.MailService;
 import com.eduplatform.eduplatform_backend.common.security.TokenHasher;
 import com.eduplatform.eduplatform_backend.identity.domain.AdminRegistrationOtp;
 import com.eduplatform.eduplatform_backend.identity.domain.Role;
@@ -53,14 +54,16 @@ public class AdminSignupService {
     private final RoleRepository roles;
     private final PasswordEncoder encoder;
     private final AuthService authService;
+    private final MailService mail;
 
     public AdminSignupService(AdminRegistrationOtpRepository otps, UserRepository users, RoleRepository roles,
-                              PasswordEncoder encoder, AuthService authService) {
+                              PasswordEncoder encoder, AuthService authService, MailService mail) {
         this.otps = otps;
         this.users = users;
         this.roles = roles;
         this.encoder = encoder;
         this.authService = authService;
+        this.mail = mail;
     }
 
     @Transactional
@@ -171,15 +174,8 @@ public class AdminSignupService {
     }
 
     private void sendOtp(AdminRegisterStartRequest req, String otp) {
-        // Real SMTP integration lives behind spring-boot-starter-mail and isn't wired here.
-        // Log it for development and persist a notification row.
-        log.info("[admin-signup] OTP for {} = {} (valid {} min)", req.email(), otp, OTP_TTL.toMinutes());
-
-        // We don't have a User row yet (signup not complete), so we can't use NotificationDispatcher
-        // which requires a User. Stash a system event with the email payload instead — wire to SMTP
-        // when the mail provider is configured.
-        // TODO(phase-9): hand off to MailSender once SMTP credentials are populated.
-        log.warn("[admin-signup] TODO: email '{} {}' the OTP via SMTP", req.firstName(), req.lastName());
+        // Delivers via SMTP when configured; falls back to logging the OTP in dev.
+        mail.sendOtp(req.email(), otp, "admin registration", OTP_TTL.toMinutes());
     }
 
     private static String generateNumericOtp() {

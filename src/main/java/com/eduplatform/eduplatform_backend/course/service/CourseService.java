@@ -5,6 +5,7 @@ import com.eduplatform.eduplatform_backend.catalog.domain.Tag;
 import com.eduplatform.eduplatform_backend.catalog.repo.CategoryRepository;
 import com.eduplatform.eduplatform_backend.catalog.repo.TagRepository;
 import com.eduplatform.eduplatform_backend.common.enums.BookingDecision;
+import com.eduplatform.eduplatform_backend.common.enums.CourseLevel;
 import com.eduplatform.eduplatform_backend.common.enums.CourseStatus;
 import com.eduplatform.eduplatform_backend.common.enums.CourseType;
 import com.eduplatform.eduplatform_backend.common.enums.TutorApprovalStatus;
@@ -19,13 +20,19 @@ import com.eduplatform.eduplatform_backend.course.web.dto.OnlineDetailsDto;
 import com.eduplatform.eduplatform_backend.course.web.dto.UpdateCourseRequest;
 import com.eduplatform.eduplatform_backend.tutor.domain.TutorProfile;
 import com.eduplatform.eduplatform_backend.tutor.repo.TutorProfileRepository;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -63,9 +70,63 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public Page<Course> browsePublished(CourseType type, Pageable pageable) {
-        Page<Course> page = type == null
-                ? courses.findAllByStatus(CourseStatus.PUBLISHED, pageable)
-                : courses.findAllByCourseTypeAndStatus(type, CourseStatus.PUBLISHED, pageable);
+        return browsePublished(type, null, null, null, null, null, null, null, pageable);
+    }
+
+    /**
+     * Catalog browse for PUBLISHED, non-deleted courses with optional server-side filters.
+     * Any null filter is ignored, so passing all nulls reproduces the unfiltered behaviour.
+     */
+    @Transactional(readOnly = true)
+    public Page<Course> browsePublished(CourseType type, UUID categoryId, BigDecimal priceMin, BigDecimal priceMax,
+                                        BigDecimal ratingMin, CourseLevel level, String language, Boolean free,
+                                        Pageable pageable) {
+        Specification<Course> spec = (root, query, cb) -> {
+            if (query != null && Long.class != query.getResultType() && long.class != query.getResultType()) {
+                root.fetch("tutor", JoinType.LEFT).fetch("user", JoinType.LEFT);
+                query.distinct(true);
+            }
+            List<Predicate> ps = new ArrayList<>();
+            ps.add(cb.equal(root.get("status"), CourseStatus.PUBLISHED));
+            if (type != null)       ps.add(cb.equal(root.get("courseType"), type));
+            if (level != null)      ps.add(cb.equal(root.get("level"), level));
+            if (language != null)   ps.add(cb.equal(root.get("language"), language));
+            if (free != null)       ps.add(cb.equal(root.get("free"), free));
+            if (priceMin != null)   ps.add(cb.greaterThanOrEqualTo(root.get("price"), priceMin));
+            if (priceMax != null)   ps.add(cb.lessThanOrEqualTo(root.get("price"), priceMax));
+            if (ratingMin != null)  ps.add(cb.greaterThanOrEqualTo(root.get("ratingAvg"), ratingMin));
+            if (categoryId != null) ps.add(cb.equal(root.join("categories", JoinType.INNER).get("id"), categoryId));
+            return cb.and(ps.toArray(new Predicate[0]));
+        };
+        Page<Course> page = courses.findAll(spec, pageable);
+        page.forEach(CourseService::initSummaryGraph);
+        return page;
+    }
+
+    /** Courses owned by the calling tutor, optionally filtered by status (drafts included). */
+    @Transactional(readOnly = true)
+    public Page<Course> listMine(UUID userId, CourseStatus status, Pageable pageable) {
+        TutorProfile tutor = tutors.findByUserId(userId)
+                .orElseThrow(() -> Errors.forbidden("NOT_A_TUTOR", "Only tutors can list their courses"));
+        Page<Course> page = status == null
+                ? courses.findAllByTutorId(tutor.getId(), pageable)
+                : courses.findAllByTutorIdAndStatus(tutor.getId(), status, pageable);
+        page.forEach(CourseService::initSummaryGraph);
+        return page;
+    }
+
+    /** Admin moderation queue: all courses in a given status. */
+    @Transactional(readOnly = true)
+    public Page<Course> listByStatus(CourseStatus status, Pageable pageable) {
+        Page<Course> page = courses.findAllByStatus(status, pageable);
+        page.forEach(CourseService::initSummaryGraph);
+        return page;
+    }
+
+    /** A tutor's PUBLISHED courses, addressed by the tutor profile id (public profile page). */
+    @Transactional(readOnly = true)
+    public Page<Course> listPublishedByTutor(UUID tutorId, Pageable pageable) {
+        Page<Course> page = courses.findAllByTutorIdAndStatus(tutorId, CourseStatus.PUBLISHED, pageable);
         page.forEach(CourseService::initSummaryGraph);
         return page;
     }
@@ -81,6 +142,14 @@ public class CourseService {
     private static void initSummaryGraph(Course c) {
         if (c.getTutor() != null) {
             c.getTutor().getUser().getFirstName();   // init tutor + user for display name
+        }
+        if (c.getThumbnail() != null) {
+            c.getThumbnail().getId();                 // init thumbnail proxy for thumbnailMediaId
+        }
+        if (c.getCourseType() == CourseType.ONLINE) {
+            if (c.getOnlineDetails() != null) c.getOnlineDetails().getTotalVideoSeconds();
+        } else if (c.getOfflineDetails() != null) {
+            c.getOfflineDetails().getTotalHours();    // init offline details for duration
         }
     }
 
